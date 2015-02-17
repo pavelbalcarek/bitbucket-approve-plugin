@@ -50,8 +50,8 @@ public class BitbucketApprover extends Notifier {
     public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) {
         PrintStream logger = listener.getLogger();
 
-        if (build.getResult().isWorseOrEqualTo(Result.FAILURE)) {
-            logger.println("Bitbucket Approve: Skipping because of FAILURE");
+        if (build.getResult().isWorseOrEqualTo(Result.UNSTABLE)) {
+            logger.println("Bitbucket Approve: Skipping because build is " + build.getResult().toString());
             return true;
         }
 
@@ -62,7 +62,7 @@ public class BitbucketApprover extends Notifier {
         }
 
         Revision rev = buildData.getLastBuiltRevision();
-        if (buildData == null) {
+        if (rev == null) {
             logger.println("Bitbucket Approve: Could not get revision from build.");
             return false;
         }
