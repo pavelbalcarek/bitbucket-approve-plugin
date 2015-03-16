@@ -32,10 +32,13 @@ public class BitbucketApprover extends Notifier {
 
     private String mSlug;
 
+    private boolean mUnstable;
+
     @DataBoundConstructor
-    public BitbucketApprover(String owner, String slug) {
+    public BitbucketApprover(String owner, String slug, boolean unstable) {
         mOwner = owner;
         mSlug = slug;
+        mUnstable = unstable;
     }
 
     public String getSlug() {
@@ -46,11 +49,16 @@ public class BitbucketApprover extends Notifier {
         return mOwner;
     }
 
+    public boolean getUnstable() {
+        return mUnstable;
+    }
+
     @Override
     public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) {
         PrintStream logger = listener.getLogger();
 
-        if (build.getResult().isWorseOrEqualTo(Result.UNSTABLE)) {
+        if ((build.getResult().ordinal == Result.UNSTABLE.ordinal && !mUnstable)
+             || (build.getResult().isWorseThan(Result.UNSTABLE))) {
             logger.println("Bitbucket Approve: Skipping because build is " + build.getResult().toString());
             return true;
         }
