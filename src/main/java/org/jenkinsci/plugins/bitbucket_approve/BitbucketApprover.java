@@ -47,7 +47,7 @@ public class BitbucketApprover extends Notifier {
     }
 
     @Override
-    public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) {
+    public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) throws InterruptedException, IOException {
         PrintStream logger = listener.getLogger();
 
         if (build.getResult().isWorseOrEqualTo(Result.UNSTABLE)) {
@@ -73,7 +73,9 @@ public class BitbucketApprover extends Notifier {
             return false;
         }
 
-        String url = String.format("https://api.bitbucket.org/2.0/repositories/%s/%s/commit/%s/approve", mOwner, mSlug, commitHash);
+        String eOwner = build.getEnvironment(listener).expand(mOwner);
+        String eSlug  = build.getEnvironment(listener).expand(mSlug);
+        String url = String.format("https://api.bitbucket.org/2.0/repositories/%s/%s/commit/%s/approve", eOwner, eSlug, commitHash);
         logger.println("Bitbucket Approve: " + url);
 
         OkHttpClient client = new OkHttpClient();
