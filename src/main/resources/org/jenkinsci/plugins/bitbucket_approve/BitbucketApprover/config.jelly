@@ -5,7 +5,7 @@
   <f:entry title="Repository name" field="slug">
     <f:textbox />
   </f:entry>
-  <f:entry title="Approve when unstable" field="unstable">
+  <f:entry title="Approve unstable builds" field="approveUnstable">
     <f:checkbox />
   </f:entry>
 </j:jelly>
