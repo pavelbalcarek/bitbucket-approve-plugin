@@ -10,6 +10,10 @@ The plugin creates a global configuration option to supply a username and a pass
 
 In your job, create a Post-Build-Step called **Approve commit on bitbucket**. Configure that step and set the **repository owner** and the **repository name**.
 
+## Build status
+
+In addition to approving your commit on a successful build you can also select the option to mark the commit with a build status (success or fail).
+
 ## Questions, suggestions?
 
 Don't hesitate to file an issue or a pull request. This is my first attempt to creating a Jenkins plugin so appreciate any suggestions.

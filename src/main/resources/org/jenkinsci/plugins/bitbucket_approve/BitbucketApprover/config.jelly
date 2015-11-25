@@ -8,4 +8,9 @@
   <f:entry title="Approve unstable builds" field="approveUnstable">
     <f:checkbox />
   </f:entry>
+  <f:entry title="Approval Method">
+    <f:radio name="approvalMethod" value="approveOnly" title="Only approve commits" checked="${instance.approvalMethod=='approveOnly'}"/>
+    <f:radio name="approvalMethod" value="statusOnly" title="Only send build status to commits" checked="${instance.approvalMethod=='statusOnly'}"/>
+    <f:radio name="approvalMethod" value="both" title="Send both approval and build status to commits" checked="${instance.approvalMethod=='both'}"/>
+  </f:entry>
 </j:jelly>

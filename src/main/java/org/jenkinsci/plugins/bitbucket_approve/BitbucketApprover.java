@@ -3,7 +3,9 @@ package org.jenkinsci.plugins.bitbucket_approve;
 import com.squareup.okhttp.Credentials;
 import com.squareup.okhttp.OkHttpClient;
 import com.squareup.okhttp.Request;
+import com.squareup.okhttp.RequestBody;
 import com.squareup.okhttp.Response;
+import com.squareup.okhttp.MediaType;
 import hudson.Extension;
 import hudson.Launcher;
 import hudson.model.AbstractBuild;
@@ -16,6 +18,7 @@ import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Notifier;
 import hudson.tasks.Publisher;
+import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
@@ -34,11 +37,14 @@ public class BitbucketApprover extends Notifier {
 
     private boolean mApproveUnstable;
 
+    private String mApprovalMethod;
+
     @DataBoundConstructor
-    public BitbucketApprover(String owner, String slug, boolean approveUnstable) {
+    public BitbucketApprover(String owner, String slug, boolean approveUnstable, String approvalMethod) {
         mOwner = owner;
         mSlug = slug;
         mApproveUnstable = approveUnstable;
+        mApprovalMethod = approvalMethod;
     }
 
     public String getSlug() {
@@ -53,15 +59,13 @@ public class BitbucketApprover extends Notifier {
         return mApproveUnstable;
     }
 
+    public String getApprovalMethod() {
+        return mApprovalMethod;
+    }
+
     @Override
     public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) throws InterruptedException, IOException {
         PrintStream logger = listener.getLogger();
-
-        if ((build.getResult().ordinal == Result.UNSTABLE.ordinal && !mApproveUnstable)
-             || (build.getResult().isWorseThan(Result.UNSTABLE))) {
-            logger.println("Bitbucket Approve: Skipping because build is " + build.getResult().toString());
-            return true;
-        }
 
         BuildData buildData = build.getAction(BuildData.class);
         if (buildData == null) {
@@ -81,32 +85,107 @@ public class BitbucketApprover extends Notifier {
             return false;
         }
 
-        String eOwner = build.getEnvironment(listener).expand(mOwner);
-        String eSlug  = build.getEnvironment(listener).expand(mSlug);
-        String url = String.format("https://api.bitbucket.org/2.0/repositories/%s/%s/commit/%s/approve", eOwner, eSlug, commitHash);
-        logger.println("Bitbucket Approve: " + url);
-
         OkHttpClient client = new OkHttpClient();
         client.setConnectTimeout(30, TimeUnit.SECONDS);
         client.setReadTimeout(60, TimeUnit.SECONDS);
 
-        Request.Builder builder = new Request.Builder();
-        Request request = builder.header("Authorization", getDescriptor().getBasicAuth())
-                .url(url)
-                .method("POST", null).build();
+        String buildState = (build.getResult().ordinal == Result.SUCCESS.ordinal) ? "SUCCESSFUL" : "FAILED";
 
-        try {
-            Response response = client.newCall(request).execute();
+        if ((build.getResult().ordinal == Result.UNSTABLE.ordinal && !mApproveUnstable)
+             || (build.getResult().isWorseThan(Result.UNSTABLE))) {
 
-            if (isSuccessful(response)) {
-                return true;
+            if (!mApprovalMethod.equals("statusOnly")) {
+                logger.println("Bitbucket Approve: Skipping approval because build is " + build.getResult().toString());
             }
 
-            logger.println("Bitbucket Approve: " + response.code() + " - " + response.message());
-            logger.println("Bitbucket Approve: " + response.body().string());
+            return postBuildStatus(build, logger, client, commitHash, buildState);
+        }
+
+        boolean result = true;
+
+        if (!mApprovalMethod.equals("statusOnly")) {
+            String eOwner = build.getEnvironment(listener).expand(mOwner);
+            String eSlug  = build.getEnvironment(listener).expand(mSlug);
+            String url = String.format("https://api.bitbucket.org/2.0/repositories/%s/%s/commit/%s/approve", eOwner, eSlug, commitHash);
+            logger.println("Bitbucket Approve: " + url);
+
+            Request.Builder builder = new Request.Builder();
+            Request request = builder.header("Authorization", getDescriptor().getBasicAuth())
+                    .url(url)
+                    .method("POST", null).build();
+
+            try {
+                Response response = client.newCall(request).execute();
+
+                if (!isSuccessful(response)) {
+                    result = false;
+                    logger.println("Bitbucket Approve: " + response.code() + " - " + response.message());
+                    logger.println("Bitbucket Approve: " + response.body().string());
+                }
+
+
+            } catch (IOException e) {
+                e.printStackTrace(listener.getLogger());
+            }
+        }
+
+        if (!postBuildStatus(build, logger, client, commitHash, buildState)) {
+            result = false;
+        }
+
+        return result;
+    }
+
+    private boolean postBuildStatus(AbstractBuild build, PrintStream logger, OkHttpClient client, String commitHash, String state) {
+        if (mApprovalMethod.equals("approveOnly")) {
+          return true;
+        }
+
+        String statusUrl = String.format("https://api.bitbucket.org/2.0/repositories/%s/%s/commit/%s/statuses/build", mOwner, mSlug, commitHash);
+
+        Request.Builder statusBuilder = new Request.Builder();
+
+        MediaType mediaJson = MediaType.parse("application/json; charset=utf-8");
+        String key = build.getProject().getDisplayName();
+        String name = "Build #" + build.getId();
+
+        String rootUrl = Jenkins.getInstance().getRootUrl();
+        String buildUrl = "";
+        if (rootUrl == null) {
+            buildUrl = "PLEASE SET JENKINS ROOT URL IN GLOBAL CONFIG " + build.getUrl();
+        }
+        else {
+            buildUrl = rootUrl + build.getUrl();
+        }
+
+        String description = build.getProject().getDisplayName() + ' ' + commitHash.substring(0, 7);
+        String json = "{\"state\": \"" + state
+         + "\",\"key\": \"" + key
+         + "\",\"name\": \"" + name
+         + "\",\"url\": \"" + buildUrl
+         + "\",\"description\": \"" + description + "\"}";
+
+        RequestBody statusBody = RequestBody.create(mediaJson, json);
+
+        Request statusRequest = statusBuilder.header("Authorization", getDescriptor().getBasicAuth())
+                .url(statusUrl)
+                .method("POST", statusBody).build();
+
+        try {
+            Response statusResponse = client.newCall(statusRequest).execute();
+
+            if (isSuccessful(statusResponse)) {
+              return true;
+            }
+            else {
+                logger.println("Bitbucket Approve (sending status): " + statusResponse.code() + " - " + statusResponse.message());
+                logger.println("Bitbucket Approve (sending status): " + statusResponse.body().string());
+                return false;
+            }
+
 
         } catch (IOException e) {
-            e.printStackTrace(listener.getLogger());
+            e.printStackTrace(logger);
         }
 
         return false;
