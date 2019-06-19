@@ -1,5 +1,11 @@
 package org.jenkinsci.plugins.bitbucket_approve;
 
+import com.cloudbees.plugins.credentials.CredentialsMatchers;
+import com.cloudbees.plugins.credentials.CredentialsProvider;
+import com.cloudbees.plugins.credentials.common.AbstractIdCredentialsListBoxModel;
+import com.cloudbees.plugins.credentials.common.StandardCredentials;
+import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
+import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.squareup.okhttp.Credentials;
 import com.squareup.okhttp.OkHttpClient;
 import com.squareup.okhttp.Request;
@@ -11,24 +17,44 @@ import hudson.Launcher;
 import hudson.model.*;
 import hudson.plugins.git.Revision;
 import hudson.plugins.git.util.BuildData;
+import hudson.security.ACL;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Notifier;
 import hudson.tasks.Publisher;
+import hudson.util.DescribableList;
+import hudson.util.FormValidation;
+import hudson.util.ListBoxModel;
+import hudson.util.Secret;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
+
+import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
+
+import org.jenkinsci.plugins.plaincredentials.StringCredentials;
+import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
+
+import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.HttpURLConnection;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
+
+import javax.annotation.CheckForNull;
+import javax.inject.Singleton;
 
 @SuppressWarnings("unused") // This class will be loaded using its Descriptor.
 public class BitbucketApprover extends Notifier {
 
-    private final OkHttpClient mClient;
+    private static transient Class<StandardUsernamePasswordCredentials> ACCEPTED_CREDENTIALS = StandardUsernamePasswordCredentials.class;
+
+    private final transient OkHttpClient mClient;
 
     private String mOwner;
 
@@ -122,6 +148,7 @@ public class BitbucketApprover extends Notifier {
         logger.println("Bitbucket Approve: " + url);
 
         Request.Builder builder = new Request.Builder();
+        logger.println("Bitbucket Approve: Credentials Id:" + getDescriptor().getCredentialId());
         Request request = builder.header("Authorization", getDescriptor().getBasicAuth())
                 .url(url)
                 .method("POST", null).build();
@@ -160,6 +187,7 @@ public class BitbucketApprover extends Notifier {
         MediaType mediaJson = MediaType.parse("application/json; charset=utf-8");
         RequestBody statusBody = RequestBody.create(mediaJson, json);
 
+        logger.println("Bitbucket Approve: Credentials Id:" + getDescriptor().getCredentialId());
         Request.Builder builder = new Request.Builder();
         Request statusRequest = builder.header("Authorization", getDescriptor().getBasicAuth())
                 .url(url)
@@ -202,6 +230,8 @@ public class BitbucketApprover extends Notifier {
 
         private String mPassword;
 
+        private String mCredentialId;
+
         /**
          * In order to load the persisted global configuration, you have to
          * call load() in the constructor.
@@ -224,25 +254,94 @@ public class BitbucketApprover extends Notifier {
 
         @Override
         public boolean configure(StaplerRequest req, JSONObject formData) throws FormException {
-            mUser = formData.getString("user");
-            mPassword = formData.getString("password");
+            mCredentialId = formData.getString("credentialId");
+
+            StandardUsernamePasswordCredentials credentials = CredentialUtils.resolveCredential(mCredentialId);
+            mUser = credentials.getUsername();
+            mPassword = Secret.toString(credentials.getPassword());
 
             save();
 
             return super.configure(req, formData);
         }
 
-        public String getUser() {
-            return mUser;
-        }
-
-        public String getPassword() {
-            return mPassword;
-        }
-
         public String getBasicAuth() {
             return Credentials.basic(mUser, mPassword);
         }
-    }
-}
 
+        public String getCredentialId() {
+            return mCredentialId;
+        }
+
+        public FormValidation doSendTestApproval(@AncestorInPath AbstractProject<?, ?> context,
+                @QueryParameter String credentialId) {
+            StandardUsernamePasswordCredentials credentials = CredentialUtils.resolveCredential(credentialId);
+
+            if (credentials == null) {
+                return FormValidation.error("Failed to get credentials");
+            }
+
+            return FormValidation.ok("Credentials found: " + credentials.getUsername());
+        }
+
+        public ListBoxModel doFillCredentialIdItems(@AncestorInPath Item context) {
+            return CredentialUtils.getAvailableCredentials(context, mCredentialId);
+        }
+
+        @Singleton
+        public static class CredentialUtils {
+
+            public static StandardUsernamePasswordCredentials resolveCredential(@CheckForNull String credentialId) {
+                return CredentialUtils.resolveCredential(null, credentialId);
+            }
+
+            public static StandardUsernamePasswordCredentials resolveCredential(AbstractProject<?, ?> context,
+                    @CheckForNull String credentialId) {
+
+                return credentialId == null ? null
+                        : CredentialsMatchers.firstOrNull(
+                            CredentialsProvider.lookupCredentials(ACCEPTED_CREDENTIALS,
+                                context,
+                                ACL.SYSTEM,
+                                getDomainRequirements()),
+                            CredentialsMatchers.withId(credentialId));
+            }
+
+            public static ListBoxModel getAvailableCredentials(@CheckForNull Item item, String globalCredentialId) {
+                String currentValue = getCurrentlySelectedCredentialId(item, globalCredentialId);
+                if ((item == null && !Jenkins.getInstance().hasPermission(Jenkins.ADMINISTER))
+                        || item != null && !item.hasPermission(Item.EXTENDED_READ)) {
+                    return new StandardListBoxModel().includeCurrentValue(currentValue);
+                }
+                AbstractIdCredentialsListBoxModel<StandardListBoxModel, StandardCredentials> model
+                    = new StandardListBoxModel().includeEmptyValue();
+                if (item == null) {
+                    model = model.includeAs(ACL.SYSTEM, Jenkins.getInstance(), ACCEPTED_CREDENTIALS,
+                            getDomainRequirements());
+                } else {
+                    model = model.includeAs(ACL.SYSTEM, item, ACCEPTED_CREDENTIALS, getDomainRequirements());
+                }
+                if (currentValue != null) {
+                    model = model.includeCurrentValue(currentValue);
+                }
+                return model;
+            }
+
+            private static String getCurrentlySelectedCredentialId(Item item, String globalCredentialId) {
+                if (item == null) {
+                    return globalCredentialId;
+                } else if (item instanceof AbstractProject) {
+                    BitbucketApprover notifier = ((AbstractProject<?, ?>) item).getPublishersList().get(BitbucketApprover.class);
+                    return notifier == null ? null : notifier.getDescriptor().getCredentialId();
+                } else {
+                    return null;
+                }
+            }
+
+            private static List<DomainRequirement> getDomainRequirements() {
+                return Collections.<DomainRequirement>emptyList();
+            }
+        }
+    }
+
+}

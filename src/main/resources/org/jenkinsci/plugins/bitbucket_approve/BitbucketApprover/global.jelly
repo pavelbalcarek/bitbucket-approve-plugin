@@ -1,10 +1,9 @@
-<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form" xmlns:c="/lib/credentials">
   <f:section title="Bitbucket Approve">
-    <f:entry title="User" field="user">
-      <f:textbox />
+    <f:entry title="Credentials" field="credentialId">
+      <c:select />
     </f:entry>
-    <f:entry title="Password" field="password">
-      <f:password />
-    </f:entry>
+    <f:validateButton method="sendTestApproval" title="Test configuration" progress="Testing"
+                  with="credentialId" />
   </f:section>
 </j:jelly>
