@@ -6,12 +6,6 @@ import com.cloudbees.plugins.credentials.common.AbstractIdCredentialsListBoxMode
 import com.cloudbees.plugins.credentials.common.StandardCredentials;
 import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
-import com.squareup.okhttp.Credentials;
-import com.squareup.okhttp.OkHttpClient;
-import com.squareup.okhttp.Request;
-import com.squareup.okhttp.RequestBody;
-import com.squareup.okhttp.Response;
-import com.squareup.okhttp.MediaType;
 import hudson.Extension;
 import hudson.Launcher;
 import hudson.model.*;
@@ -28,6 +22,13 @@ import hudson.util.ListBoxModel;
 import hudson.util.Secret;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
+import okhttp3.ConnectionSpec;
+import okhttp3.Credentials;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 
 import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
@@ -155,7 +156,7 @@ public class BitbucketApprover extends Notifier {
         logger.println("Bitbucket Approve: Credentials Id: " + getDescriptor().getCredentialId());
         Request request = builder.header("Authorization", getDescriptor().getBasicAuth())
                 .url(url)
-                .method("POST", null).build();
+                .method("POST", RequestBody.create(null, "")).build();
 
         try {
             Response response = getHttpClient().newCall(request).execute();
@@ -231,10 +232,7 @@ public class BitbucketApprover extends Notifier {
     private OkHttpClient getHttpClient() {
         if (mClient == null) {
             LOG.debug("Bitbucket Approve: initializing http client");
-
-            mClient = new OkHttpClient();
-            mClient.setConnectTimeout(30, TimeUnit.SECONDS);
-            mClient.setReadTimeout(60, TimeUnit.SECONDS);
+            mClient = HttpClientUtils.getHttpClient(getDescriptor().getHttpClientIgnoreSSl());
         }
 
         return mClient;
@@ -250,6 +248,8 @@ public class BitbucketApprover extends Notifier {
         private String mCredentialId;
 
         private String mBitbucketUrl;
+
+        private Boolean mHttpClientIgnoreSSl;
 
         /**
          * In order to load the persisted global configuration, you have to
@@ -278,6 +278,8 @@ public class BitbucketApprover extends Notifier {
             configureCredentials(formData);
             configureEndpoint(formData);
 
+            mHttpClientIgnoreSSl = formData.getBoolean("httpClientIgnoreSSL");
+
             save();
 
             return super.configure(req, formData);
@@ -295,8 +297,12 @@ public class BitbucketApprover extends Notifier {
             return mBitbucketUrl;
         }
 
+        public Boolean getHttpClientIgnoreSSl() {
+            return mHttpClientIgnoreSSl;
+        }
+
         public FormValidation doSendTestApproval(@AncestorInPath AbstractProject<?, ?> context,
-                @QueryParameter String credentialId, @QueryParameter String bitbucketUrl) {
+                @QueryParameter String bitbucketUrl, @QueryParameter Boolean httpClientIgnoreSSL, @QueryParameter String credentialId) {
             StandardUsernamePasswordCredentials credentials = CredentialUtils.resolveCredential(credentialId);
 
             if (credentials == null) {

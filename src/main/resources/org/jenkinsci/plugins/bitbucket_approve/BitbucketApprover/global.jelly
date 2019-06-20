@@ -4,9 +4,13 @@
       <f:textbox field="bitbucketUrl" default="https://api.bitbucket.org/2.0"/>
     </f:entry>
 
+    <f:entry title="Ignore SSL errors (unsafe)">
+      <f:checkbox field="httpClientIgnoreSSL" default="false" />
+    </f:entry>
+
     <f:entry title="Credentials" field="credentialId">
       <c:select />
     </f:entry>
-    <f:validateButton method="sendTestApproval" title="Test configuration" progress="Testing" with="credentialId,bitbucketUrl" />
+    <f:validateButton method="sendTestApproval" title="Test configuration" progress="Testing" with="bitbucketUrl,httpClientIgnoreSSL,credentialId," />
   </f:section>
 </j:jelly>
