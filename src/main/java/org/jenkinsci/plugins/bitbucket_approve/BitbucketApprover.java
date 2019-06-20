@@ -113,19 +113,21 @@ public class BitbucketApprover extends Notifier {
             logger.println("Bitbucket Approve: Could not get commit hash from build data.");
             return false;
         }
-
+        
         // Previous versions did not know about approval method. This makes sure the upgrade
         // does not break builds and we keep the same behaviour as before.
         if (mApprovalMethod == null) {
             mApprovalMethod = "approveOnly";
         }
 
+        logger.println("Using bitbucket endpoint: " + getDescriptor().getBitbucketUrl());
+        
         if (!mApprovalMethod.equals("statusOnly")) {
             approveBuild(build, listener, commitHash, logger);
         } else {
             logger.println("Bitbucket Approve: Skipping approval because we only set the status.");
         }
-
+        
         if (!mApprovalMethod.equals("approveOnly")) {
             postBuildStatus(build, listener, commitHash, logger);
         } else {
@@ -145,7 +147,8 @@ public class BitbucketApprover extends Notifier {
 
         String eOwner = build.getEnvironment(listener).expand(mOwner);
         String eSlug  = build.getEnvironment(listener).expand(mSlug);
-        String url = String.format("https://api.bitbucket.org/2.0/repositories/%s/%s/commit/%s/approve", eOwner, eSlug, commitHash);
+        String url = String.format("%s/repositories/%s/%s/commit/%s/approve", getDescriptor().getBitbucketUrl(),
+                                    eOwner, eSlug, commitHash);
         logger.println("Bitbucket Approve: " + url);
 
         Request.Builder builder = new Request.Builder();
@@ -169,7 +172,8 @@ public class BitbucketApprover extends Notifier {
     private void postBuildStatus(AbstractBuild build, BuildListener listener, String commitHash, PrintStream logger) throws IOException, InterruptedException {
         String eOwner = build.getEnvironment(listener).expand(mOwner);
         String eSlug  = build.getEnvironment(listener).expand(mSlug);
-        String url = String.format("https://api.bitbucket.org/2.0/repositories/%s/%s/commit/%s/statuses/build", eOwner, eSlug, commitHash);
+        String url = String.format("%s/repositories/%s/%s/commit/%s/statuses/build", getDescriptor().getBitbucketUrl(),
+                                    eOwner, eSlug, commitHash);
         logger.println("Bitbucket Approve: " + url);
 
         String state = (build.getResult().ordinal == Result.SUCCESS.ordinal) ? "SUCCESSFUL" : "FAILED";
@@ -245,6 +249,8 @@ public class BitbucketApprover extends Notifier {
 
         private String mCredentialId;
 
+        private String mBitbucketUrl;
+
         /**
          * In order to load the persisted global configuration, you have to
          * call load() in the constructor.
@@ -267,11 +273,10 @@ public class BitbucketApprover extends Notifier {
 
         @Override
         public boolean configure(StaplerRequest req, JSONObject formData) throws FormException {
-            mCredentialId = formData.getString("credentialId");
+            LOG.debug("Configure (data): " + formData.toString());
 
-            StandardUsernamePasswordCredentials credentials = CredentialUtils.resolveCredential(mCredentialId);
-            mUser = credentials.getUsername();
-            mPassword = Secret.toString(credentials.getPassword());
+            configureCredentials(formData);
+            configureEndpoint(formData);
 
             save();
 
@@ -286,19 +291,50 @@ public class BitbucketApprover extends Notifier {
             return mCredentialId;
         }
 
+        public String getBitbucketUrl() {
+            return mBitbucketUrl;
+        }
+
         public FormValidation doSendTestApproval(@AncestorInPath AbstractProject<?, ?> context,
-                @QueryParameter String credentialId) {
+                @QueryParameter String credentialId, @QueryParameter String bitbucketUrl) {
             StandardUsernamePasswordCredentials credentials = CredentialUtils.resolveCredential(credentialId);
 
             if (credentials == null) {
                 return FormValidation.error("Failed to get credentials");
             }
 
-            return FormValidation.ok("Credentials found: " + credentials.getUsername());
+            return FormValidation.ok("Credentials found: " + credentials.getUsername()
+                                     + " bitbucket url: " + bitbucketUrl);
         }
 
         public ListBoxModel doFillCredentialIdItems(@AncestorInPath Item context) {
             return CredentialUtils.getAvailableCredentials(context, mCredentialId);
+        }
+
+        private void configureCredentials(JSONObject formData) {
+            mCredentialId = formData.getString("credentialId");
+
+            StandardUsernamePasswordCredentials credentials = CredentialUtils.resolveCredential(mCredentialId);
+            mUser = credentials.getUsername();
+            mPassword = Secret.toString(credentials.getPassword());
+
+            LOG.debug("Configure, credentials: " + mUser + " [" + mCredentialId + "]");
+        }
+
+        private void configureEndpoint(JSONObject formData) {
+            mBitbucketUrl = formData.getString("bitbucketUrl");
+
+            if (StringUtils.isEmpty(mBitbucketUrl)) {
+                mBitbucketUrl = "https://api.bitbucket.org/2.0";
+                LOG.warn("Bitbucket url is not set, using default: " + mBitbucketUrl);
+            }
+
+            if (mBitbucketUrl.startsWith("http://") == false
+                && mBitbucketUrl.startsWith("https://") == false) {
+                mBitbucketUrl = "https://" + mBitbucketUrl;
+            }
+
+            LOG.debug("Configure, bitbucket url: " + mBitbucketUrl);
         }
 
         @Singleton
