@@ -33,7 +33,8 @@ import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
-
+import org.apache.commons.lang.StringUtils;
+import org.apache.log4j.Logger;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
 
@@ -51,6 +52,8 @@ import javax.inject.Singleton;
 
 @SuppressWarnings("unused") // This class will be loaded using its Descriptor.
 public class BitbucketApprover extends Notifier {
+
+    private static transient final Logger LOG = Logger.getLogger(BitbucketApprover.class.getName());
 
     private static transient Class<StandardUsernamePasswordCredentials> ACCEPTED_CREDENTIALS = StandardUsernamePasswordCredentials.class;
 
@@ -94,8 +97,9 @@ public class BitbucketApprover extends Notifier {
 
     @Override
     public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) throws InterruptedException, IOException {
+        LOG.debug("Bitbucket Approve: perform started");
         PrintStream logger = listener.getLogger();
-
+        
         BuildData buildData = build.getAction(BuildData.class);
         if (buildData == null) {
             logger.println("Bitbucket Approve: Could not get build data from build.");
@@ -131,7 +135,8 @@ public class BitbucketApprover extends Notifier {
         } else {
             logger.println("Bitbucket Approve: Skipping build status because we only approve commits.");
         }
-
+        
+        LOG.debug("Bitbucket Approve: perform finished");
         return true;
     }
 
@@ -148,7 +153,7 @@ public class BitbucketApprover extends Notifier {
         logger.println("Bitbucket Approve: " + url);
 
         Request.Builder builder = new Request.Builder();
-        logger.println("Bitbucket Approve: Credentials Id:" + getDescriptor().getCredentialId());
+        logger.println("Bitbucket Approve: Credentials Id: " + getDescriptor().getCredentialId());
         Request request = builder.header("Authorization", getDescriptor().getBasicAuth())
                 .url(url)
                 .method("POST", null).build();
