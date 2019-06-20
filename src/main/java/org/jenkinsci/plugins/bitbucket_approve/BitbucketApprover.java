@@ -57,7 +57,7 @@ public class BitbucketApprover extends Notifier {
 
     private static transient Class<StandardUsernamePasswordCredentials> ACCEPTED_CREDENTIALS = StandardUsernamePasswordCredentials.class;
 
-    private final transient OkHttpClient mClient;
+    private transient OkHttpClient mClient;
 
     private String mOwner;
 
@@ -73,10 +73,6 @@ public class BitbucketApprover extends Notifier {
         mSlug = slug;
         mApproveUnstable = approveUnstable;
         mApprovalMethod = approvalMethod;
-
-        mClient = new OkHttpClient();
-        mClient.setConnectTimeout(30, TimeUnit.SECONDS);
-        mClient.setReadTimeout(60, TimeUnit.SECONDS);
     }
 
     public String getSlug() {
@@ -159,7 +155,7 @@ public class BitbucketApprover extends Notifier {
                 .method("POST", null).build();
 
         try {
-            Response response = mClient.newCall(request).execute();
+            Response response = getHttpClient().newCall(request).execute();
 
             if (!isSuccessful(response)) {
                 logger.println("Bitbucket Approve: " + response.code() + " - " + response.message());
@@ -199,7 +195,7 @@ public class BitbucketApprover extends Notifier {
                 .method("POST", statusBody).build();
 
         try {
-            Response statusResponse = mClient.newCall(statusRequest).execute();
+            Response statusResponse = getHttpClient().newCall(statusRequest).execute();
 
             if (!isSuccessful(statusResponse)) {
                 logger.println("Bitbucket Approve (sending status): " + statusResponse.code() + " - " + statusResponse.message());
@@ -226,6 +222,18 @@ public class BitbucketApprover extends Notifier {
 
     public BuildStepMonitor getRequiredMonitorService() {
         return BuildStepMonitor.NONE;
+    }
+
+    private OkHttpClient getHttpClient() {
+        if (mClient == null) {
+            LOG.debug("Bitbucket Approve: initializing http client");
+
+            mClient = new OkHttpClient();
+            mClient.setConnectTimeout(30, TimeUnit.SECONDS);
+            mClient.setReadTimeout(60, TimeUnit.SECONDS);
+        }
+
+        return mClient;
     }
 
     @Extension
