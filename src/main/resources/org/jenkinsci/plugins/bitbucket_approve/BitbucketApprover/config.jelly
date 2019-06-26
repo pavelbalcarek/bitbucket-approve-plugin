@@ -8,6 +8,12 @@
   <f:entry title="Approve unstable builds" field="approveUnstable">
     <f:checkbox />
   </f:entry>
+
+  <f:entry title="Original payload (bitbucket payload)" field="bitbucketPayload">
+    <f:textbox />
+  </f:entry>
+
+
   <f:entry title="Approval Method">
     <f:radio name="approvalMethod" value="approveOnly" title="Only approve commits" checked="${instance.approvalMethod == null || instance.approvalMethod=='approveOnly'}"/>
     <f:radio name="approvalMethod" value="statusOnly" title="Only send build status to commits" checked="${instance.approvalMethod=='statusOnly'}"/>
