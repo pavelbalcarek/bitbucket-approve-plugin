@@ -204,10 +204,8 @@ public class BitbucketApprover extends Notifier {
     }
 
     private void postBuildStatus(AbstractBuild build, BuildListener listener, String commitHash) throws IOException, InterruptedException {
-        String eOwner = build.getEnvironment(listener).expand(mOwner);
-        String eSlug  = build.getEnvironment(listener).expand(mSlug);
-        String url = String.format("%s/repositories/%s/%s/commit/%s/statuses/build", getDescriptor().getBitbucketUrl(),
-                                    eOwner, eSlug, commitHash);
+        String url = String.format("%s/rest/build-status/1.0/commits/%s", getDescriptor().getBitbucketUrl(),
+                                    commitHash);
         doLogAndPrint("Bitbucket Approve: " + url, listener);
 
         String state = (build.getResult().ordinal == Result.SUCCESS.ordinal) ? "SUCCESSFUL" : "FAILED";
