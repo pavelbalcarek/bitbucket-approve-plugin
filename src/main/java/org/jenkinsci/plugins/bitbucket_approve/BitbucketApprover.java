@@ -36,7 +36,9 @@ import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.StaplerRequest;
 import org.apache.commons.lang.StringUtils;
+import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
+import org.apache.log4j.Priority;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl;
 
@@ -105,23 +107,21 @@ public class BitbucketApprover extends Notifier {
     public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) throws InterruptedException, IOException {
         LOG.debug("Bitbucket Approve: perform started");
 
-        PrintStream logger = listener.getLogger();
-        
         BuildData buildData = build.getAction(BuildData.class);
         if (buildData == null) {
-            logger.println("Bitbucket Approve: Could not get build data from build.");
+            doLogAndPrint("Bitbucket Approve: Could not get build data from build.", listener);
             return false;
         }
 
         Revision rev = buildData.getLastBuiltRevision();
         if (rev == null) {
-            logger.println("Bitbucket Approve: Could not get revision from build.");
+            doLogAndPrint("Bitbucket Approve: Could not get revision from build.", listener);
             return false;
         }
 
         String commitHash = rev.getSha1String();
         if (commitHash == null) {
-            logger.println("Bitbucket Approve: Could not get commit hash from build data.");
+            doLogAndPrint("Bitbucket Approve: Could not get commit hash from build data.", listener);
             return false;
         }
         
@@ -131,25 +131,25 @@ public class BitbucketApprover extends Notifier {
             mApprovalMethod = "approveOnly";
         }
 
-        logger.println("Using bitbucket endpoint: " + getDescriptor().getBitbucketUrl());
+        doLogAndPrint("Using bitbucket endpoint: " + getDescriptor().getBitbucketUrl(), listener);
         
         if (!mApprovalMethod.equals("statusOnly")) {
-            approveBuild(build, listener, commitHash, logger);
+            approveBuild(build, listener, commitHash);
         } else {
-            logger.println("Bitbucket Approve: Skipping approval because we only set the status.");
+            doLogAndPrint("Bitbucket Approve: Skipping approval because we only set the status.", listener);
         }
         
         if (!mApprovalMethod.equals("approveOnly")) {
-            postBuildStatus(build, listener, commitHash, logger);
+            postBuildStatus(build, listener, commitHash);
         } else {
-            logger.println("Bitbucket Approve: Skipping build status because we only approve commits.");
+            doLogAndPrint("Bitbucket Approve: Skipping build status because we only approve commits.", listener);
         }
         
         LOG.debug("Bitbucket Approve: perform finished");
         return true;
     }
 
-    private void approveBuild(AbstractBuild build, BuildListener listener, String commitHash, PrintStream logger) throws IOException, InterruptedException {
+    private void approveBuild(AbstractBuild build, BuildListener listener, String commitHash) throws IOException, InterruptedException {
         String eBitbucketPayload = build.getEnvironment(listener).expand(mBitbucketPayload);
 
         BitbucketPullRequestPayloadModel pullRequestPayload = PayloadParser.parsePayload(build, listener,
@@ -182,11 +182,11 @@ public class BitbucketApprover extends Notifier {
         MediaType mediaJson = MediaType.parse("application/json; charset=utf-8");
         RequestBody statusBody = RequestBody.create(mediaJson, json);
 
-        logger.println("Bitbucket Approve: url = " + url);
-        logger.println("Bitbucket Approve: payload = " + json);
+        doLogAndPrint("Bitbucket Approve: url = " + url, listener);
+        doLogAndPrint("Bitbucket Approve: payload = " + json, listener);
 
         Request.Builder builder = new Request.Builder();
-        logger.println("Bitbucket Approve: Credentials Id: " + getDescriptor().getCredentialId());
+        doLogAndPrint("Bitbucket Approve: Credentials Id: " + getDescriptor().getCredentialId(), listener);
         Request request = builder.header("Authorization", getDescriptor().getBasicAuth())
                 .url(url)
                 .method("PUT", statusBody).build();
@@ -195,20 +195,20 @@ public class BitbucketApprover extends Notifier {
             Response response = getHttpClient().newCall(request).execute();
 
             if (!isSuccessful(response)) {
-                logger.println("Bitbucket Approve: " + response.code() + " - " + response.message());
-                logger.println("Bitbucket Approve: " + response.body().string());
+                doLogAndPrint("Bitbucket Approve: " + response.code() + " - " + response.message(), listener);
+                doLogAndPrint("Bitbucket Approve: " + response.body().string(), listener);
             }
         } catch (IOException e) {
             e.printStackTrace(listener.getLogger());
         }
     }
 
-    private void postBuildStatus(AbstractBuild build, BuildListener listener, String commitHash, PrintStream logger) throws IOException, InterruptedException {
+    private void postBuildStatus(AbstractBuild build, BuildListener listener, String commitHash) throws IOException, InterruptedException {
         String eOwner = build.getEnvironment(listener).expand(mOwner);
         String eSlug  = build.getEnvironment(listener).expand(mSlug);
         String url = String.format("%s/repositories/%s/%s/commit/%s/statuses/build", getDescriptor().getBitbucketUrl(),
                                     eOwner, eSlug, commitHash);
-        logger.println("Bitbucket Approve: " + url);
+        doLogAndPrint("Bitbucket Approve: " + url, listener);
 
         String state = (build.getResult().ordinal == Result.SUCCESS.ordinal) ? "SUCCESSFUL" : "FAILED";
         String key = build.getProject().getDisplayName();
@@ -226,7 +226,7 @@ public class BitbucketApprover extends Notifier {
         MediaType mediaJson = MediaType.parse("application/json; charset=utf-8");
         RequestBody statusBody = RequestBody.create(mediaJson, json);
 
-        logger.println("Bitbucket Approve: Credentials Id:" + getDescriptor().getCredentialId());
+        doLogAndPrint("Bitbucket Approve: Credentials Id:" + getDescriptor().getCredentialId(), listener);
         Request.Builder builder = new Request.Builder();
         Request statusRequest = builder.header("Authorization", getDescriptor().getBasicAuth())
                 .url(url)
@@ -236,11 +236,12 @@ public class BitbucketApprover extends Notifier {
             Response statusResponse = getHttpClient().newCall(statusRequest).execute();
 
             if (!isSuccessful(statusResponse)) {
-                logger.println("Bitbucket Approve (sending status): " + statusResponse.code() + " - " + statusResponse.message());
-                logger.println("Bitbucket Approve (sending status): " + statusResponse.body().string());
+                doLogAndPrint("Bitbucket Approve (sending status): " + statusResponse.code() + " - " + statusResponse.message(), listener);
+                doLogAndPrint("Bitbucket Approve (sending status): " + statusResponse.body().string(), listener);
             }
         } catch (IOException e) {
-            e.printStackTrace(logger);
+            e.printStackTrace(listener.getLogger());
+            LOG.error(e);
         }
     }
 
@@ -269,6 +270,25 @@ public class BitbucketApprover extends Notifier {
         }
 
         return mClient;
+    }
+
+    private static void doLogAndPrint(String message, BuildListener buildListener) {
+        doLogAndPrint(message, buildListener, Level.DEBUG);
+    }
+
+    private static void doLogAndPrint(String message, BuildListener buildListener, Level level) {
+        if (StringUtils.isEmpty(message)) {
+            return;
+        }
+
+        if (buildListener != null) {
+            PrintStream logger = buildListener.getLogger();
+            logger.println(message);
+        }
+
+        if (level != null) {
+            LOG.log(level, message);
+        }
     }
 
     @Extension
