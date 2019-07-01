@@ -63,10 +63,6 @@ public class BitbucketApprover extends Notifier {
 
     private transient OkHttpClient mClient;
 
-    private String mOwner;
-
-    private String mSlug;
-
     private boolean mApproveUnstable;
 
     private String mApprovalMethod;
@@ -74,21 +70,10 @@ public class BitbucketApprover extends Notifier {
     private String mBitbucketPayload;
 
     @DataBoundConstructor
-    public BitbucketApprover(String owner, String slug, boolean approveUnstable, String approvalMethod,
-                             String bitbucketPayload) {
-        mOwner = owner;
-        mSlug = slug;
+    public BitbucketApprover(boolean approveUnstable, String approvalMethod, String bitbucketPayload) {
         mApproveUnstable = approveUnstable;
         mApprovalMethod = approvalMethod;
         mBitbucketPayload = bitbucketPayload;
-    }
-
-    public String getSlug() {
-        return mSlug;
-    }
-
-    public String getOwner() {
-        return mOwner;
     }
 
     public boolean getApproveUnstable() {
