@@ -247,10 +247,10 @@ public class BitbucketApprover extends Notifier {
     }
 
     private OkHttpClient getHttpClient() {
-        if (mClient == null) {
+        if (mClient == null || getDescriptor().getRefreshConfiguration()) {
             LOG.debug("Bitbucket Approve: initializing http client");
-            mClient = HttpClientUtils.getHttpClient(getDescriptor().getHttpClientIgnoreSSl());
-        }
+            mClient = HttpClientUtils.getHttpClient(getDescriptor().getHttpClientIgnoreSSL());
+        } 
 
         return mClient;
     }
@@ -284,8 +284,10 @@ public class BitbucketApprover extends Notifier {
         private String mCredentialId;
 
         private String mBitbucketUrl;
-
-        private Boolean mHttpClientIgnoreSSl;
+        
+        private Boolean mHttpClientIgnoreSSL;
+        
+        private transient Boolean mRefreshConfiguration;
 
         /**
          * In order to load the persisted global configuration, you have to
@@ -314,7 +316,9 @@ public class BitbucketApprover extends Notifier {
             configureCredentials(formData);
             configureEndpoint(formData);
 
-            mHttpClientIgnoreSSl = formData.getBoolean("httpClientIgnoreSSL");
+            Boolean currentHttpClientIgnoreSSL = formData.getBoolean("httpClientIgnoreSSL");
+            mRefreshConfiguration = currentHttpClientIgnoreSSL != mHttpClientIgnoreSSL;
+            mHttpClientIgnoreSSL = currentHttpClientIgnoreSSL;
 
             save();
 
@@ -337,8 +341,12 @@ public class BitbucketApprover extends Notifier {
             return mBitbucketUrl;
         }
 
-        public Boolean getHttpClientIgnoreSSl() {
-            return mHttpClientIgnoreSSl;
+        public Boolean getHttpClientIgnoreSSL() {
+            return mHttpClientIgnoreSSL;
+        }
+
+        public Boolean getRefreshConfiguration() {
+            return mRefreshConfiguration;
         }
 
         public FormValidation doSendTestApproval(@AncestorInPath AbstractProject<?, ?> context,
@@ -350,6 +358,7 @@ public class BitbucketApprover extends Notifier {
             }
 
             return FormValidation.ok("Credentials found: " + credentials.getUsername()
+                                     + " ignore ssl: " + httpClientIgnoreSSL.toString()
                                      + " bitbucket url: " + bitbucketUrl);
         }
 
