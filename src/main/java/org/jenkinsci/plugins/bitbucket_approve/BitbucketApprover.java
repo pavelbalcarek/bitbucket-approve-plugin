@@ -63,10 +63,6 @@ public class BitbucketApprover extends Notifier {
 
     private transient OkHttpClient mClient;
 
-    private String mOwner;
-
-    private String mSlug;
-
     private boolean mApproveUnstable;
 
     private String mApprovalMethod;
@@ -74,21 +70,10 @@ public class BitbucketApprover extends Notifier {
     private String mBitbucketPayload;
 
     @DataBoundConstructor
-    public BitbucketApprover(String owner, String slug, boolean approveUnstable, String approvalMethod,
-                             String bitbucketPayload) {
-        mOwner = owner;
-        mSlug = slug;
+    public BitbucketApprover(boolean approveUnstable, String approvalMethod, String bitbucketPayload) {
         mApproveUnstable = approveUnstable;
         mApprovalMethod = approvalMethod;
         mBitbucketPayload = bitbucketPayload;
-    }
-
-    public String getSlug() {
-        return mSlug;
-    }
-
-    public String getOwner() {
-        return mOwner;
     }
 
     public boolean getApproveUnstable() {
@@ -262,10 +247,10 @@ public class BitbucketApprover extends Notifier {
     }
 
     private OkHttpClient getHttpClient() {
-        if (mClient == null) {
+        if (mClient == null || getDescriptor().getRefreshConfiguration()) {
             LOG.debug("Bitbucket Approve: initializing http client");
-            mClient = HttpClientUtils.getHttpClient(getDescriptor().getHttpClientIgnoreSSl());
-        }
+            mClient = HttpClientUtils.getHttpClient(getDescriptor().getHttpClientIgnoreSSL());
+        } 
 
         return mClient;
     }
@@ -292,15 +277,17 @@ public class BitbucketApprover extends Notifier {
     @Extension
     public static final class DescriptorImpl extends BuildStepDescriptor<Publisher> {
 
-        private String mUser;
+        private transient String mUser;
 
-        private String mPassword;
-
+        private transient String mPassword;
+        
         private String mCredentialId;
-
+        
         private String mBitbucketUrl;
-
-        private Boolean mHttpClientIgnoreSSl;
+        
+        private Boolean mHttpClientIgnoreSSL;
+        
+        private transient Boolean mRefreshConfiguration = false;
 
         /**
          * In order to load the persisted global configuration, you have to
@@ -308,6 +295,8 @@ public class BitbucketApprover extends Notifier {
          */
         public DescriptorImpl() {
             load();
+
+            configureCredentials(mCredentialId);
         }
 
         public boolean isApplicable(Class<? extends AbstractProject> aClass) {
@@ -329,7 +318,9 @@ public class BitbucketApprover extends Notifier {
             configureCredentials(formData);
             configureEndpoint(formData);
 
-            mHttpClientIgnoreSSl = formData.getBoolean("httpClientIgnoreSSL");
+            Boolean currentHttpClientIgnoreSSL = formData.getBoolean("httpClientIgnoreSSL");
+            mRefreshConfiguration = currentHttpClientIgnoreSSL != mHttpClientIgnoreSSL;
+            mHttpClientIgnoreSSL = currentHttpClientIgnoreSSL;
 
             save();
 
@@ -352,8 +343,12 @@ public class BitbucketApprover extends Notifier {
             return mBitbucketUrl;
         }
 
-        public Boolean getHttpClientIgnoreSSl() {
-            return mHttpClientIgnoreSSl;
+        public Boolean getHttpClientIgnoreSSL() {
+            return mHttpClientIgnoreSSL;
+        }
+
+        public Boolean getRefreshConfiguration() {
+            return mRefreshConfiguration;
         }
 
         public FormValidation doSendTestApproval(@AncestorInPath AbstractProject<?, ?> context,
@@ -365,6 +360,7 @@ public class BitbucketApprover extends Notifier {
             }
 
             return FormValidation.ok("Credentials found: " + credentials.getUsername()
+                                     + " ignore ssl: " + httpClientIgnoreSSL.toString()
                                      + " bitbucket url: " + bitbucketUrl);
         }
 
@@ -375,7 +371,11 @@ public class BitbucketApprover extends Notifier {
         private void configureCredentials(JSONObject formData) {
             mCredentialId = formData.getString("credentialId");
 
-            StandardUsernamePasswordCredentials credentials = CredentialUtils.resolveCredential(mCredentialId);
+            configureCredentials(mCredentialId);
+        }
+
+        private void configureCredentials(String credentialId) {
+            StandardUsernamePasswordCredentials credentials = CredentialUtils.resolveCredential(credentialId);
             mUser = credentials.getUsername();
             mPassword = Secret.toString(credentials.getPassword());
 
