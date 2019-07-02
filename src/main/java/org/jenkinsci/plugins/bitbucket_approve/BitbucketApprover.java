@@ -277,17 +277,17 @@ public class BitbucketApprover extends Notifier {
     @Extension
     public static final class DescriptorImpl extends BuildStepDescriptor<Publisher> {
 
-        private String mUser;
+        private transient String mUser;
 
-        private String mPassword;
-
+        private transient String mPassword;
+        
         private String mCredentialId;
-
+        
         private String mBitbucketUrl;
         
         private Boolean mHttpClientIgnoreSSL;
         
-        private transient Boolean mRefreshConfiguration;
+        private transient Boolean mRefreshConfiguration = false;
 
         /**
          * In order to load the persisted global configuration, you have to
@@ -295,6 +295,8 @@ public class BitbucketApprover extends Notifier {
          */
         public DescriptorImpl() {
             load();
+
+            configureCredentials(mCredentialId);
         }
 
         public boolean isApplicable(Class<? extends AbstractProject> aClass) {
@@ -369,7 +371,11 @@ public class BitbucketApprover extends Notifier {
         private void configureCredentials(JSONObject formData) {
             mCredentialId = formData.getString("credentialId");
 
-            StandardUsernamePasswordCredentials credentials = CredentialUtils.resolveCredential(mCredentialId);
+            configureCredentials(mCredentialId);
+        }
+
+        private void configureCredentials(String credentialId) {
+            StandardUsernamePasswordCredentials credentials = CredentialUtils.resolveCredential(credentialId);
             mUser = credentials.getUsername();
             mPassword = Secret.toString(credentials.getPassword());
 
