@@ -2,3 +2,6 @@
 *.iml
 work
 target
+.settings/
+.classpath
+.factorypath
