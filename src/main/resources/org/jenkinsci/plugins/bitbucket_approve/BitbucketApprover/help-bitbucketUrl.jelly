@@ -1,3 +1,4 @@
+<?jelly escape-by-default='true'?>
 <div>
 Base api url for bitbucket instance. For cloud instance use <i>https://api.bitbucket.org/2.0</i>,
 for own server instance, please use <i>https://myserver.com/bitbucket</i>

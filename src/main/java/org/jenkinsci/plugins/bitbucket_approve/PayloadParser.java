@@ -7,8 +7,8 @@ import org.jenkinsci.plugins.bitbucket_approve.model.BitbucketPayloadModelBase;
 import org.jenkinsci.plugins.bitbucket_approve.model.BitbucketPullRequestPayloadModel;
 import org.jenkinsci.plugins.bitbucket_approve.model.BitbucketPushPayloadModel;
 
-import hudson.model.AbstractBuild;
-import hudson.model.BuildListener;
+import hudson.model.Run;
+import hudson.model.TaskListener;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONException;
 import net.sf.json.JSONObject;
@@ -17,7 +17,7 @@ public final class PayloadParser {
 
     private static transient final Logger LOG = Logger.getLogger(PayloadParser.class.getName());
 
-    public static BitbucketPayloadModelBase parse(AbstractBuild<?, ?> build, BuildListener listener,
+    public static BitbucketPayloadModelBase parse(Run<?, ?> build, TaskListener listener,
             String payloadEnvVariableOrContent) throws Exception {
 
         String payloadContent = extractEnvironmentVariable(build, listener, payloadEnvVariableOrContent);
@@ -35,8 +35,8 @@ public final class PayloadParser {
         throw new Exception("Unable to find valid payloads");
     }
 
-    private static BitbucketPullRequestPayloadModel parsePullRequestPayload(AbstractBuild<?, ?> build,
-            BuildListener listener, JSONObject payloadObject) {
+    private static BitbucketPullRequestPayloadModel parsePullRequestPayload(Run<?, ?> build,
+            TaskListener listener, JSONObject payloadObject) {
 
         String projectKey = "";
         String repositorySlug = "";
@@ -61,7 +61,7 @@ public final class PayloadParser {
         return new BitbucketPullRequestPayloadModel(sourceCommitHash, projectKey, repositorySlug, pullRequestId);
     }
 
-    private static BitbucketPushPayloadModel parsePushPayload(AbstractBuild<?, ?> build, BuildListener listener,
+    private static BitbucketPushPayloadModel parsePushPayload(Run<?, ?> build, TaskListener listener,
         JSONObject payloadObject) {
 
         String sourceCommitHash = "";
@@ -76,7 +76,7 @@ public final class PayloadParser {
         return new BitbucketPushPayloadModel(sourceCommitHash);
     }
 
-    private static String extractEnvironmentVariable(AbstractBuild<?, ?> build, BuildListener listener,
+    private static String extractEnvironmentVariable(Run<?, ?> build, TaskListener listener,
             String variableName) {
         String extractedVariable = "";
         try {
