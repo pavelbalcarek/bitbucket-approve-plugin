@@ -1,3 +1,4 @@
+<?jelly escape-by-default='true'?>
 <div>
     Environment variable with bitbucket payload or directly content of received bitbucket payload.
 </div>

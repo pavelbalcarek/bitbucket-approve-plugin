@@ -3,10 +3,13 @@ package org.jenkinsci.plugins.bitbucket_approve;
 import java.io.IOException;
 
 import org.apache.log4j.Logger;
-import org.jenkinsci.plugins.bitbucket_approve.BitbucketPullRequestPayloadModel;
+import org.jenkinsci.plugins.bitbucket_approve.model.BitbucketPayloadModelBase;
+import org.jenkinsci.plugins.bitbucket_approve.model.BitbucketPullRequestPayloadModel;
+import org.jenkinsci.plugins.bitbucket_approve.model.BitbucketPushPayloadModel;
 
-import hudson.model.AbstractBuild;
-import hudson.model.BuildListener;
+import hudson.model.Run;
+import hudson.model.TaskListener;
+import net.sf.json.JSONArray;
 import net.sf.json.JSONException;
 import net.sf.json.JSONObject;
 
@@ -14,37 +17,67 @@ public final class PayloadParser {
 
     private static transient final Logger LOG = Logger.getLogger(PayloadParser.class.getName());
 
-    public static BitbucketPullRequestPayloadModel parsePayload(AbstractBuild<?, ?> build, BuildListener listener,
-            String payloadEnvVariableOrContent) {
+    public static BitbucketPayloadModelBase parse(Run<?, ?> build, TaskListener listener,
+            String payloadEnvVariableOrContent) throws Exception {
 
         String payloadContent = extractEnvironmentVariable(build, listener, payloadEnvVariableOrContent);
+        LOG.debug("Bitbucket Approve: Bitbucket payload (parse) = " + payloadContent);
+       
+        JSONObject payloadObject = JSONObject.fromObject(payloadContent);
+
+        String eventKey = payloadObject.getString("eventKey");
+        if (eventKey.startsWith("repo:")) {
+            return parsePushPayload(build, listener, payloadObject);
+        } else if (eventKey.startsWith("pr:")) {
+            return parsePullRequestPayload(build, listener, payloadObject);
+        }
+
+        throw new Exception("Unable to find valid payloads");
+    }
+
+    private static BitbucketPullRequestPayloadModel parsePullRequestPayload(Run<?, ?> build,
+            TaskListener listener, JSONObject payloadObject) {
 
         String projectKey = "";
         String repositorySlug = "";
         String pullRequestId = "";
+        String sourceCommitHash = "";
 
-        LOG.debug("Bitbucket Approve: Bitbucket payload = " + payloadContent);
         try {
-            JSONObject payloadObject = JSONObject.fromObject(payloadContent);
             JSONObject pullRequestObject = payloadObject.getJSONObject("pullRequest");
-            JSONObject repositoryObject = pullRequestObject.getJSONObject("fromRef").getJSONObject("repository");
+            JSONObject fromRefObject = pullRequestObject.getJSONObject("fromRef");
+            JSONObject repositoryObject = fromRefObject.getJSONObject("repository");
 
             projectKey = repositoryObject.getJSONObject("project").getString("key");
             repositorySlug = repositoryObject.getString("slug");
             pullRequestId = pullRequestObject.getString("id");
 
+            sourceCommitHash = fromRefObject.getString("latestCommit");
+
         } catch (JSONException err) {
             LOG.error("Can't parse bitbucket payload");
         }
 
-        return new BitbucketPullRequestPayloadModel(
-            projectKey,
-            repositorySlug,
-            pullRequestId
-        );
+        return new BitbucketPullRequestPayloadModel(sourceCommitHash, projectKey, repositorySlug, pullRequestId);
     }
 
-    private static String extractEnvironmentVariable(AbstractBuild<?, ?> build, BuildListener listener, String variableName) {
+    private static BitbucketPushPayloadModel parsePushPayload(Run<?, ?> build, TaskListener listener,
+        JSONObject payloadObject) {
+
+        String sourceCommitHash = "";
+
+        try {
+            JSONArray changeObjects = payloadObject.getJSONArray("changes");
+            sourceCommitHash = changeObjects.getJSONObject(0).getString("toHash");
+        } catch (JSONException err) {
+            LOG.error("Can't parse bitbucket payload");
+        }
+
+        return new BitbucketPushPayloadModel(sourceCommitHash);
+    }
+
+    private static String extractEnvironmentVariable(Run<?, ?> build, TaskListener listener,
+            String variableName) {
         String extractedVariable = "";
         try {
             extractedVariable = build.getEnvironment(listener).expand(variableName);

@@ -1,12 +1,15 @@
-package org.jenkinsci.plugins.bitbucket_approve;
+package org.jenkinsci.plugins.bitbucket_approve.model;
 
-public class BitbucketPullRequestPayloadModel {
+public class BitbucketPullRequestPayloadModel extends BitbucketPayloadModelBase {
 
     private final String mProjectKey;
     private final String mRepositorySlug;
     private final String mPullRequestId;
 
-    public BitbucketPullRequestPayloadModel(String projectKey, String repositorySlug, String pullRequestId) {
+    public BitbucketPullRequestPayloadModel(String sourceCommitHash, String projectKey, String repositorySlug,
+            String pullRequestId) {
+        super(sourceCommitHash);
+
         mProjectKey = projectKey;
         mRepositorySlug = repositorySlug;
         mPullRequestId = pullRequestId;

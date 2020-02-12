@@ -1,3 +1,4 @@
+<?jelly escape-by-default='true'?>
 <div>
 Approve commits even if the build is unstable, e.g. if there are failing tests.
 </div>
