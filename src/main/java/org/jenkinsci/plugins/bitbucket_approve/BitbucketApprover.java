@@ -72,6 +72,8 @@ public class BitbucketApprover extends Notifier implements SimpleBuildStep {
 
     private String mBitbucketPayload;
 
+    private RequestBuilder mRequestBuilder;
+
     @DataBoundConstructor
     public BitbucketApprover(boolean approveUnstable, String approvalMethod, String bitbucketPayload) {
         mApproveUnstable = approveUnstable;
@@ -91,9 +93,17 @@ public class BitbucketApprover extends Notifier implements SimpleBuildStep {
         return mBitbucketPayload;
     }
 
-	@Override
-	public void perform(Run<?, ?> build, FilePath workspace, Launcher launcher, TaskListener listener)
-			throws InterruptedException, IOException {
+    private RequestBuilder getRequestBuilder() {
+        if (mRequestBuilder == null) {
+            mRequestBuilder = new RequestBuilder(getDescriptor());
+        }
+
+        return mRequestBuilder;
+    }
+
+    @Override
+    public void perform(Run<?, ?> build, FilePath workspace, Launcher launcher, TaskListener listener)
+            throws InterruptedException, IOException {
         LOG.debug("Bitbucket Approve: perform started");
 
         BitbucketPayloadModelBase payload = null;
@@ -137,9 +147,8 @@ public class BitbucketApprover extends Notifier implements SimpleBuildStep {
 
     private void approveBuild(Run<?, ?> build, TaskListener listener, BitbucketPullRequestPayloadModel payload)
             throws IOException, InterruptedException {
-
-        String url = String.format("%s/rest/api/1.0/projects/%s/repos/%s/pull-requests/%s/participants/%s",
-                getDescriptor().getBitbucketUrl(), payload.getProjectKey(), payload.getRepositorySlug(),
+        String url = String.format("rest/api/1.0/projects/%s/repos/%s/pull-requests/%s/participants/%s",
+                payload.getProjectKey(), payload.getRepositorySlug(),
                 payload.getPullRequestId(), getDescriptor().getUsername());
 
         String approveStatus = "UNAPPROVED";
@@ -152,16 +161,11 @@ public class BitbucketApprover extends Notifier implements SimpleBuildStep {
         String json = "{ " + "\"user\": { \"name\": \"" + getDescriptor().getUsername() + "\" " + "}, "
                 + "\"approved\": true, " + "\"status\": \"" + approveStatus + "\" " + "}";
 
-        MediaType mediaJson = MediaType.parse("application/json; charset=utf-8");
-        RequestBody statusBody = RequestBody.create(mediaJson, json);
+        Request request = getRequestBuilder().buildRequest(url, "PUT", json);
 
-        doLogAndPrint("Bitbucket Approve: url = " + url, listener);
+        doLogAndPrint("Bitbucket Approve: url = " + request.url().toString(), listener);
         doLogAndPrint("Bitbucket Approve: payload = " + json, listener);
-
-        Request.Builder builder = new Request.Builder();
         doLogAndPrint("Bitbucket Approve: Credentials Id: " + getDescriptor().getCredentialId(), listener);
-        Request request = builder.header("Authorization", getDescriptor().getBasicAuth()).url(url)
-                .method("PUT", statusBody).build();
 
         try {
             Response response = getHttpClient().newCall(request).execute();
@@ -179,8 +183,7 @@ public class BitbucketApprover extends Notifier implements SimpleBuildStep {
             throws IOException, InterruptedException {
 
         String commitHash = payload.getSourceCommitHash();
-        String url = String.format("%s/rest/build-status/1.0/commits/%s", getDescriptor().getBitbucketUrl(),
-                commitHash);
+        String url = String.format("rest/build-status/1.0/commits/%s", commitHash);
         doLogAndPrint("Bitbucket Approve: " + url, listener);
 
         String state = this.isBuildSuccessfulOrRunning(build) ? "SUCCESSFUL" : "FAILED";
@@ -198,12 +201,10 @@ public class BitbucketApprover extends Notifier implements SimpleBuildStep {
         RequestBody statusBody = RequestBody.create(mediaJson, json);
 
         doLogAndPrint("Bitbucket Approve: Credentials Id: " + getDescriptor().getCredentialId(), listener);
-        Request.Builder builder = new Request.Builder();
-        Request statusRequest = builder.header("Authorization", getDescriptor().getBasicAuth()).url(url)
-                .method("POST", statusBody).build();
 
+        Request request = getRequestBuilder().buildRequest(url, "POST", json);
         try {
-            Response statusResponse = getHttpClient().newCall(statusRequest).execute();
+            Response statusResponse = getHttpClient().newCall(request).execute();
 
             if (!isSuccessful(statusResponse)) {
                 doLogAndPrint("Bitbucket Approve (sending status): " + statusResponse.code() + " - "
@@ -370,6 +371,13 @@ public class BitbucketApprover extends Notifier implements SimpleBuildStep {
             if (credentials == null) {
                 return FormValidation.error("Failed to get credentials");
             }
+
+            String basicAuth = Credentials.basic(credentials.getUsername(), credentials.getPassword().getPlainText());
+            Request request = RequestBuilder.buildRequest(bitbucketUrl,
+                                                            basicAuth,
+                                                            "rest/api/1.0/users?filter=" + credentials.getUsername(),
+                                                            "GET",
+                                                            null);
 
             return FormValidation.ok("Credentials found: " + credentials.getUsername() + " ignore ssl: "
                     + httpClientIgnoreSSL.toString() + " bitbucket url: " + bitbucketUrl);
