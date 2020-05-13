@@ -184,7 +184,7 @@ public class BitbucketApprover extends Notifier implements SimpleBuildStep {
         doLogAndPrint("Bitbucket Approve: " + url, listener);
 
         String state = this.isBuildSuccessfulOrRunning(build) ? "SUCCESSFUL" : "FAILED";
-        String key = build.getDisplayName();
+        String key = this.getJobKey(build);
         String name = "Build #" + build.getId();
         String rootUrl = Jenkins.getInstance().getRootUrl();
         String buildUrl = (rootUrl == null) ? "PLEASE SET JENKINS ROOT URL IN GLOBAL CONFIG " + build.getUrl()
@@ -214,6 +214,14 @@ public class BitbucketApprover extends Notifier implements SimpleBuildStep {
             e.printStackTrace(listener.getLogger());
             LOG.error(e);
         }
+    }
+
+    private String getJobKey(Run<?, ?> build) {
+        if (build.getParent() != null && StringUtils.isNotBlank(build.getParent().getName())) {
+            return build.getParent().getName();
+        }
+
+        return build.getDisplayName();
     }
 
     private boolean isBuildSuccessfulOrRunning(Run<?, ?> build)
